@@ -1,0 +1,53 @@
+{
+  "name": "cube-pay-hackathons",
+  "version": "1.0.0",
+  "description": "AR Cube Pay - Unified monorepo for hackathon submissions",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build": "npm run build:frontend && npm run build:backend",
+    "build:frontend": "cd frontend && npm run build",
+    "build:backend": "cd backend && npm run build || echo 'No backend build needed'",
+    "start": "npm run start:backend",
+    "start:backend": "cd backend && npm start",
+    "test": "npm run test:backend && npm run test:frontend",
+    "test:backend": "cd backend && npm test || echo 'No backend tests'",
+    "test:frontend": "cd frontend && npm test || echo 'No frontend tests'",
+    "lint": "npm run lint:backend && npm run lint:frontend",
+    "lint:backend": "cd backend && npm run lint || echo 'No backend linting'",
+    "lint:frontend": "cd frontend && npm run lint || echo 'No frontend linting'",
+    "clean": "rm -rf frontend/node_modules frontend/dist backend/node_modules backend/dist node_modules",
+    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install && cd ..",
+    "sync:from-repos": "./scripts/sync-from-repos.sh"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/petrkrulis2022/cube-pay-hackathons.git"
+  },
+  "keywords": [
+    "ar",
+    "payments",
+    "crypto",
+    "fiat",
+    "ai-agents",
+    "virtual-cards",
+    "revolut",
+    "blockchain",
+    "hackathon"
+  ],
+  "author": "AR Cube Pay Team",
+  "license": "MIT"
+}
