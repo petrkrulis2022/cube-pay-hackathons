@@ -1,0 +1,26 @@
+/* Modern Agent Marketplace Styles */
+.agent-marketplace {
+  padding: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+.marketplace-header {
+  margin-bottom: 2rem;
+}
+.agent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 1.5rem;
+}
+.agent-card {
+  background: #fff;
+  border-radius: 1rem;
+  padding: 1.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e5e7eb;
+}
+.agent-card h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}

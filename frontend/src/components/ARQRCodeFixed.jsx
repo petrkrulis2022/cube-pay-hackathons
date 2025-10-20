@@ -1,0 +1,584 @@
+import React, { useRef, useMemo, useState, useEffect } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Html, Billboard, Text } from "@react-three/drei";
+import * as THREE from "three";
+import QRCode from "qrcode";
+import arQRManager from "../services/arQRManager";
+import paymentProcessor from "../services/paymentProcessor";
+
+// Enhanced 3D QR Code Object Component with persistence
+const FloatingQRCode = ({
+  qrData,
+  position = [0, 0, -2],
+  size = 1,
+  onScanned,
+  isActive = true,
+  qrObject = null,
+}) => {
+  const meshRef = useRef();
+  const glowRef = useRef();
+  const [qrTexture, setQrTexture] = useState(null);
+  const [animationPhase, setAnimationPhase] = useState(0);
+  const [isScanning, setIsScanning] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
+
+  // Generate QR code texture with enhanced error handling and better visibility
+  useEffect(() => {
+    if (!qrData) {
+      console.warn("No QR data provided for texture generation");
+      setHasError(true);
+      return;
+    }
+
+    console.log("🎨 Generating enhanced QR texture for AR display");
+
+    const canvas = document.createElement("canvas");
+    const canvasSize = 1024; // Higher resolution for better scanning
+    canvas.width = canvasSize;
+    canvas.height = canvasSize;
+
+    QRCode.toCanvas(
+      canvas,
+      qrData,
+      {
+        width: canvasSize,
+        margin: 4, // Increased margin for better visibility
+        color: {
+          dark: "#000000",
+          light: "#FFFFFF",
+        },
+        errorCorrectionLevel: "H", // Highest error correction for AR scanning
+      },
+      (error) => {
+        if (error) {
+          console.error("❌ Error generating QR texture:", error);
+          setHasError(true);
+
+          // Create fallback error texture with higher visibility
+          const errorCanvas = document.createElement("canvas");
+          errorCanvas.width = canvasSize;
+          errorCanvas.height = canvasSize;
+          const ctx = errorCanvas.getContext("2d");
+
+          // High contrast error display
+          ctx.fillStyle = "#FF1744";
+          ctx.fillRect(0, 0, canvasSize, canvasSize);
+          ctx.fillStyle = "#FFFFFF";
+          ctx.font = "bold 48px Arial";
+          ctx.textAlign = "center";
+          ctx.fillText("QR ERROR", canvasSize / 2, canvasSize / 2 - 20);
+          ctx.font = "32px Arial";
+          ctx.fillText("Check Console", canvasSize / 2, canvasSize / 2 + 40);
+
+          const errorTexture = new THREE.CanvasTexture(errorCanvas);
+          errorTexture.flipY = false;
+          errorTexture.needsUpdate = true;
+          setQrTexture(errorTexture);
+        } else {
+          console.log("✅ Enhanced QR texture generated successfully");
+          const texture = new THREE.CanvasTexture(canvas);
+          texture.flipY = false;
+          texture.minFilter = THREE.NearestFilter; // Crisp QR code
+          texture.magFilter = THREE.NearestFilter;
+          texture.needsUpdate = true;
+          setQrTexture(texture);
+          setHasError(false);
+          setIsVisible(true);
+        }
+      }
+    );
+  }, [qrData]);
+
+  // Enhanced animation loop with improved visibility and performance
+  useFrame((state) => {
+    if (!meshRef.current || !isActive) return;
+
+    const time = state.clock.getElapsedTime();
+
+    // Enhanced floating animation - more noticeable
+    const floatAmplitude = 0.25; // Increased amplitude
+    const floatSpeed = 1.0;
+    meshRef.current.position.y =
+      position[1] + Math.sin(time * floatSpeed) * floatAmplitude;
+
+    // Gentle rotation to show it's interactive - face camera more
+    const rotationSpeed = 0.8;
+    meshRef.current.rotation.y = Math.sin(time * rotationSpeed) * 0.2;
+
+    // Slight tilt for 3D effect
+    meshRef.current.rotation.x = Math.sin(time * 0.5) * 0.1;
+
+    // Enhanced pulsing scale for better attention
+    const pulseSpeed = 2.0;
+    const pulseAmplitude = 0.08; // More noticeable pulse
+    const scale = size + Math.sin(time * pulseSpeed) * pulseAmplitude;
+    meshRef.current.scale.setScalar(scale);
+
+    // Enhanced glow effect animation
+    if (glowRef.current) {
+      const glowIntensity = 0.4 + Math.sin(time * 2.5) * 0.3;
+      glowRef.current.material.opacity = glowIntensity;
+    }
+
+    setAnimationPhase(time);
+  });
+
+  // Enhanced click handler with payment processing
+  const handleClick = async (event) => {
+    if (!isActive || isScanning || hasError) return;
+
+    event.stopPropagation();
+    console.log("📱 AR QR Code clicked for payment processing");
+
+    setIsScanning(true);
+
+    // Visual feedback - quick scale animation
+    if (meshRef.current) {
+      const originalScale = meshRef.current.scale.x;
+      meshRef.current.scale.setScalar(originalScale * 1.3);
+
+      // Reset scale after animation
+      setTimeout(() => {
+        if (meshRef.current) {
+          meshRef.current.scale.setScalar(originalScale);
+        }
+      }, 300);
+    }
+
+    try {
+      // Prepare enhanced scan data for payment processing
+      const scanData = {
+        id: qrObject?.id || `ar_qr_${Date.now()}`,
+        data: qrData,
+        payment_uri: qrData, // The QR data is the payment URI
+        position: position,
+        qrObject: qrObject,
+        scannedAt: Date.now(),
+        amount: qrObject?.amount,
+        agent: qrObject?.agent,
+      };
+
+      console.log("💳 Processing payment for QR scan:", scanData);
+
+      // Process payment using the payment processor
+      const paymentResult = await paymentProcessor.processQRPayment(scanData);
+
+      console.log("✅ Payment processing completed:", paymentResult);
+
+      // Call scan handler with payment result
+      if (onScanned) {
+        onScanned({
+          ...scanData,
+          paymentResult,
+          paymentSuccess: true,
+        });
+      }
+
+      // Update AR QR Manager
+      if (qrObject?.id) {
+        arQRManager.scanQR(qrObject.id);
+      }
+    } catch (error) {
+      console.error("💥 Payment processing failed:", error);
+
+      // Show error state visually
+      setHasError(true);
+
+      // Call scan handler with error info
+      if (onScanned) {
+        onScanned({
+          id: qrObject?.id || `ar_qr_${Date.now()}`,
+          data: qrData,
+          position: position,
+          qrObject: qrObject,
+          scannedAt: Date.now(),
+          paymentError: error.message,
+          paymentSuccess: false,
+        });
+      }
+
+      // Reset error state after 5 seconds
+      setTimeout(() => {
+        setHasError(false);
+      }, 5000);
+    } finally {
+      // Reset scanning state
+      setTimeout(() => {
+        setIsScanning(false);
+      }, 2000);
+    }
+  };
+
+  // Loading state with better visibility
+  if (!qrTexture) {
+    return (
+      <Billboard follow={true} lockX={false} lockY={false} lockZ={false}>
+        <mesh position={position}>
+          <planeGeometry args={[size, size]} />
+          <meshBasicMaterial color="#444444" transparent opacity={0.7} />
+          <Html center position={[0, 0, 0.01]}>
+            <div className="bg-black/90 text-white px-3 py-2 rounded-lg text-sm font-medium border border-white/20">
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 bg-blue-400 rounded-full animate-pulse"></div>
+                <span>Generating QR...</span>
+              </div>
+            </div>
+          </Html>
+        </mesh>
+      </Billboard>
+    );
+  }
+
+  return (
+    <Billboard follow={true} lockX={false} lockY={false} lockZ={false}>
+      <group ref={meshRef} position={position}>
+        {/* Enhanced main QR Code Plane with better materials */}
+        <mesh onClick={handleClick}>
+          <planeGeometry args={[size, size]} />
+          <meshBasicMaterial
+            map={qrTexture}
+            transparent={true}
+            opacity={isActive ? (hasError ? 0.8 : 1.0) : 0.5}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+
+        {/* Enhanced multi-layer glowing border effect */}
+        <mesh ref={glowRef} position={[0, 0, -0.002]}>
+          <planeGeometry args={[size * 1.2, size * 1.2]} />
+          <meshBasicMaterial
+            color={
+              hasError
+                ? "#FF4444"
+                : isScanning
+                ? "#00FF88"
+                : isActive
+                ? "#8B5CF6"
+                : "#666666"
+            }
+            transparent={true}
+            opacity={0.4}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+
+        {/* Outer glow ring */}
+        <mesh position={[0, 0, -0.003]}>
+          <planeGeometry args={[size * 1.35, size * 1.35]} />
+          <meshBasicMaterial
+            color={
+              hasError
+                ? "#FF1744"
+                : isScanning
+                ? "#00E676"
+                : isActive
+                ? "#7C3AED"
+                : "#424242"
+            }
+            transparent={true}
+            opacity={0.2 + Math.sin(animationPhase * 3) * 0.15}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+
+        {/* Enhanced status indicator ring with better visibility */}
+        <mesh position={[0, 0, 0.002]}>
+          <ringGeometry args={[size * 0.52, size * 0.58, 64]} />
+          <meshBasicMaterial
+            color={
+              hasError
+                ? "#FF1744"
+                : isScanning
+                ? "#00E676"
+                : isActive
+                ? "#00C853"
+                : "#FF9800"
+            }
+            transparent={true}
+            opacity={0.8 + Math.sin(animationPhase * 4) * 0.2}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+
+        {/* Corner indicators for better depth perception */}
+        {isActive && !hasError && (
+          <>
+            <mesh position={[size * 0.4, size * 0.4, 0.001]}>
+              <boxGeometry args={[0.05, 0.05, 0.01]} />
+              <meshBasicMaterial color="#00E676" transparent opacity={0.8} />
+            </mesh>
+            <mesh position={[-size * 0.4, size * 0.4, 0.001]}>
+              <boxGeometry args={[0.05, 0.05, 0.01]} />
+              <meshBasicMaterial color="#00E676" transparent opacity={0.8} />
+            </mesh>
+            <mesh position={[size * 0.4, -size * 0.4, 0.001]}>
+              <boxGeometry args={[0.05, 0.05, 0.01]} />
+              <meshBasicMaterial color="#00E676" transparent opacity={0.8} />
+            </mesh>
+            <mesh position={[-size * 0.4, -size * 0.4, 0.001]}>
+              <boxGeometry args={[0.05, 0.05, 0.01]} />
+              <meshBasicMaterial color="#00E676" transparent opacity={0.8} />
+            </mesh>
+          </>
+        )}
+
+        {/* Interactive scan instruction */}
+        <Html
+          position={[0, -size / 2 - 0.4, 0]}
+          center
+          distanceFactor={10}
+          occlude
+        >
+          <div
+            className={`px-3 py-2 rounded-full text-sm font-medium border ${
+              hasError
+                ? "bg-red-500/90 text-white border-red-400 animate-pulse"
+                : isScanning
+                ? "bg-green-500/90 text-white border-green-400 animate-pulse"
+                : "bg-black/90 text-white border-purple-500/50 animate-pulse"
+            }`}
+          >
+            {hasError ? (
+              <span>❌ QR Error</span>
+            ) : isScanning ? (
+              <span>🔄 Scanning...</span>
+            ) : (
+              <span>📱 Tap to Scan & Pay</span>
+            )}
+          </div>
+        </Html>
+
+        {/* Payment amount indicator */}
+        {qrObject?.amount && !hasError && (
+          <Html
+            position={[0, size / 2 + 0.3, 0]}
+            center
+            distanceFactor={10}
+            occlude
+          >
+            <div className="bg-purple-500/90 text-white px-2 py-1 rounded text-xs font-bold border border-purple-400">
+              {qrObject.amount} USBDG+
+            </div>
+          </Html>
+        )}
+
+        {/* Agent name indicator */}
+        {qrObject?.agent?.name && !hasError && (
+          <Html
+            position={[size / 2 + 0.2, 0, 0]}
+            center
+            distanceFactor={12}
+            occlude
+          >
+            <div className="bg-blue-500/90 text-white px-2 py-1 rounded-l text-xs font-medium">
+              {qrObject.agent.name}
+            </div>
+          </Html>
+        )}
+
+        {/* Database status indicator (debug) */}
+        {qrObject?.dbSaveStatus && (
+          <Html
+            position={[-size / 2 - 0.2, 0, 0]}
+            center
+            distanceFactor={15}
+            occlude
+          >
+            <div
+              className={`px-1 py-0.5 rounded text-xs ${
+                qrObject.dbSaveStatus === "saved"
+                  ? "bg-green-500/80 text-white"
+                  : qrObject.dbSaveStatus === "failed"
+                  ? "bg-red-500/80 text-white"
+                  : "bg-yellow-500/80 text-black"
+              }`}
+            >
+              {qrObject.dbSaveStatus === "saved"
+                ? "✓"
+                : qrObject.dbSaveStatus === "failed"
+                ? "✗"
+                : "⏳"}
+            </div>
+          </Html>
+        )}
+      </group>
+    </Billboard>
+  );
+};
+
+// Enhanced AR Scene Container with persistent QR management
+const ARQRScene = ({
+  qrCodes = [],
+  onQRScanned,
+  cameraPosition = [0, 0, 0],
+}) => {
+  const [localQRCodes, setLocalQRCodes] = useState(qrCodes);
+
+  // Listen for AR QR Manager events
+  useEffect(() => {
+    const handleQRAdded = (event) => {
+      const qrObject = event.detail;
+      console.log("🎯 AR QR Manager: QR added", qrObject);
+
+      setLocalQRCodes((prev) => {
+        const exists = prev.find((qr) => qr.id === qrObject.id);
+        if (exists) return prev;
+        return [...prev, qrObject];
+      });
+    };
+
+    const handleQRRemoved = (event) => {
+      const { qrId } = event.detail;
+      console.log("🗑️ AR QR Manager: QR removed", qrId);
+
+      setLocalQRCodes((prev) => prev.filter((qr) => qr.id !== qrId));
+    };
+
+    const handleQRCleared = () => {
+      console.log("🧹 AR QR Manager: All QRs cleared");
+      setLocalQRCodes([]);
+    };
+
+    // Add event listeners
+    window.addEventListener("arQRAdded", handleQRAdded);
+    window.addEventListener("arQRRemoved", handleQRRemoved);
+    window.addEventListener("arQRCleared", handleQRCleared);
+
+    return () => {
+      window.removeEventListener("arQRAdded", handleQRAdded);
+      window.removeEventListener("arQRRemoved", handleQRRemoved);
+      window.removeEventListener("arQRCleared", handleQRCleared);
+    };
+  }, []);
+
+  // Update local QR codes when props change
+  useEffect(() => {
+    setLocalQRCodes(qrCodes);
+  }, [qrCodes]);
+
+  return (
+    <Canvas
+      camera={{
+        position: cameraPosition,
+        fov: 75,
+        near: 0.1,
+        far: 1000,
+      }}
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: "100%",
+        height: "100%",
+        pointerEvents: "auto",
+        zIndex: 20,
+      }}
+      gl={{
+        alpha: true,
+        antialias: true,
+        preserveDrawingBuffer: true,
+      }}
+    >
+      {/* Enhanced lighting for better QR visibility */}
+      <ambientLight intensity={0.9} />
+      <pointLight position={[10, 10, 10]} intensity={0.6} />
+      <pointLight position={[-10, -10, -10]} intensity={0.3} />
+
+      {/* Render all QR codes with enhanced data */}
+      {localQRCodes.map((qrCode, index) => (
+        <FloatingQRCode
+          key={qrCode.id || `qr-${index}`}
+          qrData={qrCode.data}
+          position={
+            qrCode.position || [(index - localQRCodes.length / 2) * 2.5, 1, -3]
+          }
+          size={qrCode.size || 1.5}
+          onScanned={(scanData) => {
+            console.log("🎯 QR Scan in AR Scene:", scanData);
+            if (onQRScanned) {
+              onQRScanned(scanData);
+            }
+          }}
+          isActive={qrCode.status === "active"}
+          qrObject={qrCode}
+        />
+      ))}
+
+      {/* Debug information display */}
+      {localQRCodes.length > 0 && (
+        <Html position={[0, 3, -5]} center>
+          <div className="bg-black/70 text-white px-2 py-1 rounded text-xs">
+            {localQRCodes.length} AR QR{localQRCodes.length !== 1 ? "s" : ""}{" "}
+            Active
+          </div>
+        </Html>
+      )}
+    </Canvas>
+  );
+};
+
+// Main AR QR Code Component with enhanced state management
+const ARQRCodeFixed = ({ qrCodes = [], onQRScanned, className = "" }) => {
+  const [localQRCodes, setLocalQRCodes] = useState(qrCodes);
+  const [stats, setStats] = useState({ active: 0, total: 0 });
+
+  // Update local state when props change
+  useEffect(() => {
+    setLocalQRCodes(qrCodes);
+  }, [qrCodes]);
+
+  // Enhanced QR scan handler with persistence
+  const handleQRScanned = (scanData) => {
+    console.log("🎯 AR QR Scanned:", scanData);
+
+    // Update local state to show scanning feedback
+    setLocalQRCodes((prev) =>
+      prev.map((qr) =>
+        qr.id === scanData.id
+          ? { ...qr, status: "scanned", scannedAt: scanData.scannedAt }
+          : qr
+      )
+    );
+
+    // Call parent handler with enhanced data
+    if (onQRScanned) {
+      onQRScanned(scanData);
+    }
+
+    // Auto-remove scanned QR after animation
+    setTimeout(() => {
+      setLocalQRCodes((prev) => prev.filter((qr) => qr.id !== scanData.id));
+    }, 3000);
+  };
+
+  // Update stats periodically
+  useEffect(() => {
+    const updateStats = () => {
+      const managerStats = arQRManager.getStats();
+      setStats(managerStats);
+    };
+
+    updateStats();
+    const interval = setInterval(updateStats, 2000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className={`relative w-full h-full ${className}`}>
+      <ARQRScene qrCodes={localQRCodes} onQRScanned={handleQRScanned} />
+
+      {/* Debug stats overlay */}
+      {process.env.NODE_ENV === "development" && stats.total > 0 && (
+        <div className="absolute top-2 left-2 bg-black/70 text-white p-2 rounded text-xs font-mono">
+          QR Stats: {stats.active} active, {stats.total} total
+          <br />
+          DB: {stats.dbSaved} saved, {stats.dbFailed} failed
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default ARQRCodeFixed;

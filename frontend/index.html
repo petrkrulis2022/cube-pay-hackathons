@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NeAR Viewer - AR Agent Network</title>
+    <script>
+      // Enhanced Buffer polyfill for Solana libraries
+      if (typeof globalThis.Buffer === "undefined") {
+        // Import buffer polyfill
+        globalThis.Buffer = {
+          from: function (data, encoding) {
+            if (typeof data === "string") {
+              return new TextEncoder().encode(data);
+            }
+            return new Uint8Array(data);
+          },
+          alloc: function (size) {
+            return new Uint8Array(size);
+          },
+          isBuffer: function (obj) {
+            return obj instanceof Uint8Array;
+          },
+        };
+        window.Buffer = globalThis.Buffer;
+      }
+
+      // Additional Node.js polyfills
+      if (typeof globalThis.process === "undefined") {
+        globalThis.process = { env: {} };
+      }
+    </script>
+    <!-- Revolut Web SDK -->
+    <script src="https://merchant.revolut.com/embed.js" async></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
